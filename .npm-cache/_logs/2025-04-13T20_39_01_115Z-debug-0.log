@@ -7,6 +7,7 @@
 6 silly config load:file:/opt/homebrew/etc/npmrc
 7 verbose title npm exec tsup --watch
 8 verbose argv "exec" "--" "tsup" "--watch"
-9 verbose logfile logs-max:10 dir:/Users/lucaslopes/testenovo123/void/.npm-cache/_logs/2025-04-13T19_23_52_893Z-
-10 verbose logfile /Users/lucaslopes/testenovo123/void/.npm-cache/_logs/2025-04-13T19_23_52_893Z-debug-0.log
-11 silly logfile done cleaning log files
+9 verbose logfile logs-max:10 dir:/Users/lucaslopes/testenovo123/void/.npm-cache/_logs/2025-04-13T20_39_01_115Z-
+10 verbose logfile /Users/lucaslopes/testenovo123/void/.npm-cache/_logs/2025-04-13T20_39_01_115Z-debug-0.log
+11 silly logfile start cleaning logs, removing 2 files
+12 silly logfile done cleaning log files
