@@ -1,4 +1,3 @@
-
 /*--------------------------------------------------------------------------------------
  *  Copyright 2025 Glass Devtools, Inc. All rights reserved.
  *  Licensed under the Apache License, Version 2.0. See LICENSE.txt for more information.
@@ -344,7 +343,7 @@ export const isFeatureNameDisabled = (featureName: FeatureName, settingsState: V
 
 
 
-export type ChatMode = 'agent' | 'gather' | 'normal'
+export type ChatMode = 'agent' | 'gather' | 'normal' | 'autotasks'
 
 
 export type GlobalSettings = {
@@ -358,6 +357,8 @@ export type GlobalSettings = {
 	showInlineSuggestions: boolean;
 	includeToolLintErrors: boolean;
 	isOnboardingComplete: boolean;
+	autoTasksPath: string;
+	autoTasksEnabled: boolean;
 }
 
 export const defaultGlobalSettings: GlobalSettings = {
@@ -371,6 +372,8 @@ export const defaultGlobalSettings: GlobalSettings = {
 	showInlineSuggestions: true,
 	includeToolLintErrors: true,
 	isOnboardingComplete: true,
+	autoTasksPath: '',
+	autoTasksEnabled: false,
 }
 
 export type GlobalSettingName = keyof GlobalSettings

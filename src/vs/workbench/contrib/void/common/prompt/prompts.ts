@@ -200,7 +200,8 @@ export const availableTools = (chatMode: ChatMode) => {
 	const toolNames: ToolName[] | undefined = chatMode === 'normal' ? undefined
 		: chatMode === 'gather' ? (Object.keys(voidTools) as ToolName[]).filter(toolName => !toolNamesThatRequireApproval.has(toolName))
 			: chatMode === 'agent' ? Object.keys(voidTools) as ToolName[]
-				: undefined
+				: chatMode === 'autotasks' ? Object.keys(voidTools) as ToolName[]
+					: undefined
 
 	const tools: InternalToolInfo[] | undefined = toolNames?.map(toolName => voidTools[toolName])
 	return tools
@@ -260,7 +261,8 @@ export const chat_systemMessage = ({ workspaceFolders, openedURIs, activeURI, ru
 ${mode === 'agent' ? `to help the user develop, run, and make changes to their codebase.`
 			: mode === 'gather' ? `to search, understand, and reference files in the user's codebase.`
 				: mode === 'normal' ? `to assist the user with their coding tasks.`
-					: ''}
+					: mode === 'autotasks' ? `to execute a sequence of automated tasks from a JSON file.`
+						: ''}
 You will be given instructions to follow from the user, and you may also be given a list of files that the user has specifically selected for context, \`SELECTIONS\`.
 Please assist the user with their query.`)
 

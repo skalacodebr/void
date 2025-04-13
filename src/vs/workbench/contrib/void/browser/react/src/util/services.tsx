@@ -48,6 +48,7 @@ import { IVoidCommandBarService } from '../../../voidCommandBarService.js'
 import { INativeHostService } from '../../../../../../../platform/native/common/native.js';
 import { IEditCodeService } from '../../../editCodeServiceInterface.js'
 import { IToolsService } from '../../../toolsService.js'
+import { IAutoTasksService } from '../../../../common/autoTasksService.js'
 
 
 // normally to do this you'd use a useEffect that calls .onDidChangeState(), but useEffect mounts too late and misses initial state changes
@@ -192,6 +193,7 @@ const getReactAccessor = (accessor: ServicesAccessor) => {
 		IEditCodeService: accessor.get(IEditCodeService),
 		ISidebarStateService: accessor.get(ISidebarStateService),
 		IChatThreadService: accessor.get(IChatThreadService),
+		IAutoTasksService: accessor.get(IAutoTasksService),
 
 		IInstantiationService: accessor.get(IInstantiationService),
 		ICodeEditorService: accessor.get(ICodeEditorService),

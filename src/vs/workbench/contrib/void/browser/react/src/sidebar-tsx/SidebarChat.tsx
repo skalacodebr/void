@@ -30,6 +30,8 @@ import { PlacesType } from 'react-tooltip';
 import { ToolName, toolNames } from '../../../../common/prompt/prompts.js';
 import { error } from 'console';
 import { RawToolCallObj } from '../../../../common/sendLLMMessageTypes.js';
+import { IAutoTasksService, TaskExecutionStatus } from '../../../../common/autoTasksService.js';
+import { classNames } from '../../../../common/helpers/classNames.js';
 
 
 
@@ -214,12 +216,14 @@ const nameOfChatMode = {
 	'normal': 'Chat',
 	'gather': 'Gather',
 	'agent': 'Agent',
+	'autotasks': 'AutoTasks',
 }
 
 const detailOfChatMode = {
 	'normal': 'Normal chat',
 	'gather': 'Discover relevant files',
 	'agent': 'Edit files and use tools',
+	'autotasks': 'Executar tarefas automaticamente',
 }
 
 
@@ -229,7 +233,7 @@ const ChatModeDropdown = ({ className }: { className: string }) => {
 	const voidSettingsService = accessor.get('IVoidSettingsService')
 	const settingsState = useSettingsState()
 
-	const options: ChatMode[] = useMemo(() => ['normal', 'gather', 'agent'], [])
+	const options: ChatMode[] = useMemo(() => ['normal', 'gather', 'agent', 'autotasks'], [])
 
 	const onChangeOption = useCallback((newVal: ChatMode) => {
 		voidSettingsService.setGlobalSetting('chatMode', newVal)
@@ -2319,247 +2323,155 @@ const EditToolSoFar = ({ toolCallSoFar, }: { toolCallSoFar: RawToolCallObj }) =>
 
 }
 
+// Adicione este componente para AutoTasks perto do componente de chat
+const AutoTasksPanel = () => {
+	const accessor = useAccessor()
+	const autoTasksService = accessor.get('IAutoTasksService')
+	const voidSettingsService = accessor.get('IVoidSettingsService')
+	const settingsState = useSettingsState()
+
+	const [status, setStatus] = useState<TaskExecutionStatus | null>(null)
+	const [filePath, setFilePath] = useState<string>(settingsState.globalSettings.autoTasksPath || '')
+
+	useEffect(() => {
+		if (settingsState.globalSettings.chatMode === 'autotasks') {
+			// Atualizar status periodicamente
+			const interval = setInterval(() => {
+				setStatus(autoTasksService.getExecutionStatus());
+			}, 1000);
+
+			return () => clearInterval(interval);
+		}
+	}, [settingsState.globalSettings.chatMode, autoTasksService]);
+
+	const handleImportTasks = async () => {
+		if (!filePath) return;
+
+		// Salvar o caminho nas configurações
+		voidSettingsService.setGlobalSetting('autoTasksPath', filePath);
+
+		// Importar tarefas
+		const success = await autoTasksService.importTasksFromFile(filePath);
+		if (success) {
+			setStatus(autoTasksService.getExecutionStatus());
+		}
+	};
+
+	const handleStartExecution = () => {
+		autoTasksService.startTaskExecution();
+		setStatus(autoTasksService.getExecutionStatus());
+	};
+
+	const handleStopExecution = () => {
+		autoTasksService.stopTaskExecution();
+		setStatus(autoTasksService.getExecutionStatus());
+	};
+
+	if (settingsState.globalSettings.chatMode !== 'autotasks') {
+		return null;
+	}
+
+	return (
+		<div className="autotasks-panel p-4 border border-void-border-1 rounded-md">
+			<h3 className="text-lg mb-4">Gerenciador de Tarefas Automáticas</h3>
+
+			<div className="mb-4">
+				<label className="block mb-2">Arquivo JSON de Tarefas:</label>
+				<div className="flex gap-2">
+					<input
+						type="text"
+						value={filePath}
+						onChange={(e) => setFilePath(e.target.value)}
+						className="flex-1 p-1 bg-void-bg-1 border border-void-border-1 rounded"
+						placeholder="Caminho para o arquivo JSON"
+					/>
+					<button
+						onClick={handleImportTasks}
+						className="px-2 py-1 bg-void-bg-2 hover:bg-void-bg-3 rounded"
+					>
+						Importar
+					</button>
+				</div>
+			</div>
+
+			{status && (
+				<>
+					<div className="mb-4">
+						<h4 className="text-md mb-2">Status da Execução:</h4>
+						<div className="p-2 bg-void-bg-1 rounded">
+							<p>Estado: {status.isRunning ? 'Em execução' : 'Parado'}</p>
+							<p>Tarefa atual: {status.currentTaskId || 'Nenhuma'}</p>
+							<p>Executadas: {status.executedTasks.length}</p>
+							<p>Pendentes: {status.pendingTasks.length}</p>
+							<p>Falhas: {status.failedTasks.length}</p>
+						</div>
+					</div>
+
+					<div className="flex gap-2">
+						<button
+							onClick={handleStartExecution}
+							disabled={status.isRunning || status.pendingTasks.length === 0}
+							className={`px-3 py-1 rounded ${status.isRunning || status.pendingTasks.length === 0 ? 'opacity-50 cursor-not-allowed' : 'bg-void-bg-2 hover:bg-void-bg-3'}`}
+						>
+							Iniciar
+						</button>
+						<button
+							onClick={handleStopExecution}
+							disabled={!status.isRunning}
+							className={`px-3 py-1 rounded ${!status.isRunning ? 'opacity-50 cursor-not-allowed' : 'bg-void-bg-2 hover:bg-void-bg-3'}`}
+						>
+							Parar
+						</button>
+					</div>
+				</>
+			)}
+		</div>
+	);
+};
+
+// Modificar o componente SidebarChat para incluir o AutoTasksPanel
 export const SidebarChat = () => {
 	const textAreaRef = useRef<HTMLTextAreaElement | null>(null)
 	const textAreaFnsRef = useRef<TextAreaFns | null>(null)
 
 	const accessor = useAccessor()
-	const commandService = accessor.get('ICommandService')
-	const chatThreadsService = accessor.get('IChatThreadService')
-
-	const settingsState = useSettingsState()
-	// ----- HIGHER STATE -----
-	// sidebar state
 	const sidebarStateService = accessor.get('ISidebarStateService')
-	useEffect(() => {
-		const disposables: IDisposable[] = []
-		disposables.push(
-			sidebarStateService.onDidFocusChat(() => { !chatThreadsService.isCurrentlyFocusingMessage() && textAreaRef.current?.focus() }),
-			sidebarStateService.onDidBlurChat(() => { !chatThreadsService.isCurrentlyFocusingMessage() && textAreaRef.current?.blur() })
-		)
-		return () => disposables.forEach(d => d.dispose())
-	}, [sidebarStateService, textAreaRef])
 
+	// estados deste componente
+	// const [isHistoryOpen, setIsHistoryOpen] = useState(false)
 	const { isHistoryOpen } = useSidebarState()
+	const settingsState = useSettingsState()
 
-	// threads state
-	const chatThreadsState = useChatThreadsState()
-
-	const currentThread = chatThreadsService.getCurrentThread()
-	const previousMessages = currentThread?.messages ?? []
-
-	const selections = currentThread.state.stagingSelections
-	const setSelections = (s: StagingSelectionItem[]) => { chatThreadsService.setCurrentThreadState({ stagingSelections: s }) }
-
-	// stream state
-	const currThreadStreamState = useChatThreadsStreamState(chatThreadsState.currentThreadId)
-	const isRunning = currThreadStreamState?.isRunning
-	const latestError = currThreadStreamState?.error
-	const displayContentSoFar = currThreadStreamState?.displayContentSoFar
-	const toolCallSoFar = currThreadStreamState?.toolCallSoFar
-	const reasoningSoFar = currThreadStreamState?.reasoningSoFar
-
-	// this is just if it's currently being generated, NOT if it's currently running
-	const toolIsGenerating = toolCallSoFar && !toolCallSoFar.isDone && toolCallSoFar.name === 'edit_file' // show loading for slow tools (right now just edit)
-
-	// ----- SIDEBAR CHAT state (local) -----
-
-	// state of current message
-	const initVal = ''
-	const [instructionsAreEmpty, setInstructionsAreEmpty] = useState(!initVal)
-
-	const isDisabled = instructionsAreEmpty || !!isFeatureNameDisabled('Chat', settingsState)
-
-	const sidebarRef = useRef<HTMLDivElement>(null)
-	const scrollContainerRef = useRef<HTMLDivElement | null>(null)
-
-	const onSubmit = useCallback(async () => {
-
-		if (isDisabled) return
-		if (isRunning) return
-
-		const threadId = chatThreadsService.state.currentThreadId
-
-		// send message to LLM
-		const userMessage = textAreaRef.current?.value ?? ''
-
-		try {
-			await chatThreadsService.addUserMessageAndStreamResponse({ userMessage, threadId })
-		} catch (e) {
-			console.error('Error while sending message in chat:', e)
-		}
-
-		setSelections([]) // clear staging
-		textAreaFnsRef.current?.setValue('')
-		textAreaRef.current?.focus() // focus input after submit
-
-	}, [chatThreadsService, isDisabled, isRunning, textAreaRef, textAreaFnsRef, setSelections, settingsState])
-
-	const onAbort = () => {
-		const threadId = currentThread.id
-		chatThreadsService.stopRunning(threadId)
-	}
-
-	const keybindingString = accessor.get('IKeybindingService').lookupKeybinding(VOID_CTRL_L_ACTION_ID)?.getLabel()
-
-	// scroll to top on thread switch
+	const mounted = useRef(false)
 	useEffect(() => {
-		if (isHistoryOpen)
-			scrollContainerRef.current?.scrollTo({ top: 0, left: 0 })
-	}, [isHistoryOpen, currentThread.id])
+		mounted.current = true
+		return () => { mounted.current = false }
+	}, [])
 
+	const chatThreadsState = useChatThreadsState()
+	const threadInfo = chatThreadsState.currentThreadId
+		? chatThreadsState.allThreads[chatThreadsState.currentThreadId]
+		: undefined
 
-	const threadId = currentThread.id
-	const currCheckpointIdx = chatThreadsState.allThreads[threadId]?.state?.currCheckpointIdx ?? undefined  // if not exist, treat like checkpoint is last message (infinity)
-
-	const previousMessagesHTML = useMemo(() => {
-		const lastMessageIdx = previousMessages.findLastIndex(v => v.role !== 'checkpoint')
-		// tool request shows up as Editing... if in progress
-		return previousMessages.map((message, i) => {
-			return <ChatBubble
-				key={getChatBubbleId(threadId, i)}
-				currCheckpointIdx={currCheckpointIdx}
-				chatMessage={message}
-				messageIdx={i}
-				isCommitted={true}
-				chatIsRunning={isRunning}
-				threadId={threadId}
-				_scrollToBottom={() => scrollToBottom(scrollContainerRef)}
-			/>
-		})
-	}, [previousMessages, threadId, currCheckpointIdx, isRunning])
-
-	const streamingChatIdx = previousMessagesHTML.length
-	const currStreamingMessageHTML = reasoningSoFar || displayContentSoFar || isRunning ?
-		<ChatBubble
-			key={getChatBubbleId(threadId, streamingChatIdx)}
-			currCheckpointIdx={currCheckpointIdx}
-			chatMessage={{
-				role: 'assistant',
-				displayContent: displayContentSoFar ?? '',
-				reasoning: reasoningSoFar ?? '',
-				toolCall: toolCallSoFar,
-				anthropicReasoning: null,
-			}}
-			messageIdx={streamingChatIdx}
-			isCommitted={false}
-			chatIsRunning={isRunning}
-
-			threadId={threadId}
-			_scrollToBottom={null}
-		/> : null
-
-
-	// the tool currently being generated
-	const generatingTool = toolIsGenerating ?
-		toolCallSoFar.name === 'edit_file' ? <EditToolSoFar
-			key={getChatBubbleId(threadId, streamingChatIdx + 1)}
-			toolCallSoFar={toolCallSoFar}
-		/>
-			: null
-		: null
-
-	const messagesHTML = <ScrollToBottomContainer
-		key={'messages' + chatThreadsState.currentThreadId} // force rerender on all children if id changes
-		scrollContainerRef={scrollContainerRef}
-		className={`
-			flex flex-col
-			px-4 py-4 space-y-4
-			w-full h-full
-			overflow-x-hidden
-			overflow-y-auto
-			${previousMessagesHTML.length === 0 && !displayContentSoFar ? 'hidden' : ''}
-		`}
-	>
-		{/* previous messages */}
-		{previousMessagesHTML}
-		{currStreamingMessageHTML}
-
-		{/* Generating tool */}
-		{generatingTool}
-
-		{/* loading indicator */}
-		{isRunning === 'LLM' && !toolIsGenerating ? <ProseWrapper>
-			{<IconLoading className='opacity-50 text-sm' />}
-		</ProseWrapper> : null}
-
-
-		{/* error message */}
-		{latestError === undefined ? null :
-			<div className='px-2 my-1'>
-				<ErrorDisplay
-					message={latestError.message}
-					fullError={latestError.fullError}
-					onDismiss={() => { chatThreadsService.dismissStreamError(currentThread.id) }}
-					showDismiss={true}
-				/>
-
-				<WarningBox className='text-sm my-2 mx-4' onClick={() => { commandService.executeCommand(VOID_OPEN_SETTINGS_ACTION_ID) }} text='Open settings' />
-			</div>
-		}
-	</ScrollToBottomContainer>
-
-
-	const onChangeText = useCallback((newStr: string) => {
-		setInstructionsAreEmpty(!newStr)
-	}, [setInstructionsAreEmpty])
-	const onKeyDown = useCallback((e: KeyboardEvent<HTMLTextAreaElement>) => {
-		if (e.key === 'Enter' && !e.shiftKey) {
-			onSubmit()
-		} else if (e.key === 'Escape' && isRunning) {
-			onAbort()
-		}
-	}, [onSubmit, onAbort, isRunning])
-
-	const inputForm = <div key={'input' + chatThreadsState.currentThreadId}>
-		<div className='px-4'>
-			{previousMessages.length > 0 &&
-				<CommandBarInChat />
-			}
-		</div>
-		<div
-			className='px-2 pb-2'
-		>
-			<VoidChatArea
-				featureName='Chat'
-				onSubmit={onSubmit}
-				onAbort={onAbort}
-				isStreaming={!!isRunning}
-				isDisabled={isDisabled}
-				showSelections={true}
-				showProspectiveSelections={previousMessagesHTML.length === 0}
-				selections={selections}
-				setSelections={setSelections}
-				onClickAnywhere={() => { textAreaRef.current?.focus() }}
-			>
-				<VoidInputBox2
-					className={`min-h-[81px] px-0.5 py-0.5`}
-					placeholder={`${keybindingString ? `${keybindingString} to add a file. ` : ''}Enter instructions...`}
-					onChangeText={onChangeText}
-					onKeyDown={onKeyDown}
-					onFocus={() => { chatThreadsService.setCurrentlyFocusedMessageIdx(undefined) }}
-					ref={textAreaRef}
-					fnsRef={textAreaFnsRef}
-					multiline={true}
-				/>
-
-			</VoidChatArea>
-		</div>
-	</div>
+	// handle click outside
+	const ref = useRef<HTMLDivElement>(null)
 
 	return (
-		<div ref={sidebarRef} className='w-full h-full flex flex-col overflow-hidden'>
-			{/* History selector */}
-			<div className={`w-full ${isHistoryOpen ? '' : 'hidden'} ring-2 ring-widget-shadow ring-inset z-10`}>
-				<SidebarThreadSelector />
+		<div className="mx-auto w-full max-w-full h-full overflow-hidden flex flex-col" ref={ref}>
+			<div className="chat-mode">
+				<ChatModeDropdown className="ml-auto" />
 			</div>
 
-			<div className='flex-1 flex flex-col overflow-hidden'>
-				<div className={`flex-1 overflow-hidden ${previousMessages.length === 0 ? 'h-0 max-h-0 pb-2' : ''}`}>
-					{messagesHTML}
-				</div>
-				{inputForm}
-			</div>
+			{settingsState.globalSettings.chatMode === 'autotasks' ? (
+				<AutoTasksPanel />
+			) : (
+				<>
+					<ChatTextArea />
+					{threadInfo && <ChatThread thread={threadInfo} />}
+				</>
+			)}
+
+			{isHistoryOpen && <SidebarThreadSelector />}
 		</div>
 	)
 }
