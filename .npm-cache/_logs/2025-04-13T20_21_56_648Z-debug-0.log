@@ -7,8 +7,8 @@
 6 silly config load:file:/opt/homebrew/etc/npmrc
 7 verbose title npm exec scope-tailwind ./src -o src2/ -s void-scope -c styles.css -p void-
 8 verbose argv "exec" "--" "scope-tailwind" "./src" "-o" "src2/" "-s" "void-scope" "-c" "styles.css" "-p" "void-"
-9 verbose logfile logs-max:10 dir:/Users/lucaslopes/testenovo123/void/.npm-cache/_logs/2025-04-13T20_45_02_090Z-
-10 verbose logfile /Users/lucaslopes/testenovo123/void/.npm-cache/_logs/2025-04-13T20_45_02_090Z-debug-0.log
+9 verbose logfile logs-max:10 dir:/Users/lucaslopes/testenovo123/void/.npm-cache/_logs/2025-04-13T20_21_56_648Z-
+10 verbose logfile /Users/lucaslopes/testenovo123/void/.npm-cache/_logs/2025-04-13T20_21_56_648Z-debug-0.log
 11 silly logfile start cleaning logs, removing 1 files
 12 silly logfile done cleaning log files
 13 verbose cwd /Users/lucaslopes/testenovo123/void/src/vs/workbench/contrib/void/browser/react

@@ -8,14 +8,15 @@ import { createDecorator } from '../../../../platform/instantiation/common/insta
 import { InstantiationType, registerSingleton } from '../../../../platform/instantiation/common/extensions.js';
 import { Disposable } from '../../../../base/common/lifecycle.js';
 import { IFileService } from '../../../../platform/files/common/files.js';
+import { IChatThreadService } from '../browser/chatThreadService.js';
 import { IVoidSettingsService } from './voidSettingsService.js';
-import { Event, Emitter } from '../../../../base/common/event.js';
+import { Emitter } from '../../../../base/common/event.js';
 
 export interface IAutoTasksService {
 	readonly _serviceBrand: undefined;
 
 	/**
-	 * Importa tarefas de um arquivo JSON
+	 * Importa tarefas de um arquivo JSON e inicia a execução
 	 */
 	importTasksFromFile(filePath: string): Promise<boolean>;
 
@@ -38,16 +39,6 @@ export interface IAutoTasksService {
 	 * Retorna o status atual da execução
 	 */
 	getExecutionStatus(): TaskExecutionStatus;
-
-	/**
-	 * Evento que é disparado quando uma tarefa precisa ser executada
-	 */
-	readonly onTaskReady: Event<AutoTask>;
-
-	/**
-	 * Notifica que uma tarefa foi concluída
-	 */
-	notifyTaskCompleted(taskId: string, success: boolean): void;
 }
 
 export interface AutoTask {
@@ -84,12 +75,10 @@ class AutoTasksService extends Disposable implements IAutoTasksService {
 	private readonly _onTaskExecutionStarted = this._register(new Emitter<void>());
 	private readonly _onTaskExecutionStopped = this._register(new Emitter<void>());
 	private readonly _onTaskCompleted = this._register(new Emitter<string>());
-	private readonly _onTaskReady = this._register(new Emitter<AutoTask>());
-
-	readonly onTaskReady = this._onTaskReady.event;
 
 	constructor(
 		@IFileService private readonly fileService: IFileService,
+		@IChatThreadService private readonly chatThreadService: IChatThreadService,
 		@IVoidSettingsService private readonly settingsService: IVoidSettingsService
 	) {
 		super();
@@ -123,11 +112,6 @@ class AutoTasksService extends Disposable implements IAutoTasksService {
 			return;
 		}
 
-		if (!this.settingsService.state.globalSettings.autoTasksEnabled) {
-			console.warn('AutoTasks está desativado nas configurações');
-			return;
-		}
-
 		if (this._tasks.length === 0) {
 			console.warn('Não há tarefas para executar');
 			return;
@@ -136,7 +120,7 @@ class AutoTasksService extends Disposable implements IAutoTasksService {
 		this._executionStatus.isRunning = true;
 		this._onTaskExecutionStarted.fire();
 
-		this.processNextTask();
+		this.executeNextTask();
 	}
 
 	stopTaskExecution(): void {
@@ -157,25 +141,7 @@ class AutoTasksService extends Disposable implements IAutoTasksService {
 		return { ...this._executionStatus };
 	}
 
-	notifyTaskCompleted(taskId: string, success: boolean): void {
-		if (!this._executionStatus.isRunning) {
-			return;
-		}
-
-		if (success) {
-			this._executionStatus.executedTasks.push(taskId);
-			this._onTaskCompleted.fire(taskId);
-		} else {
-			this._executionStatus.failedTasks.push(taskId);
-		}
-
-		// Processar a próxima tarefa após um breve intervalo
-		setTimeout(() => {
-			this.processNextTask();
-		}, 1000);
-	}
-
-	private processNextTask(): void {
+	private async executeNextTask(): Promise<void> {
 		if (!this._executionStatus.isRunning || this._executionStatus.pendingTasks.length === 0) {
 			this.stopTaskExecution();
 			return;
@@ -198,8 +164,34 @@ class AutoTasksService extends Disposable implements IAutoTasksService {
 		this._executionStatus.currentTaskId = task.id;
 		this._executionStatus.pendingTasks = this._executionStatus.pendingTasks.filter(id => id !== task.id);
 
-		// Emitir evento para que um executor externo processe a tarefa
-		this._onTaskReady.fire(task);
+		try {
+			// Usar o serviço de chat para executar a tarefa
+			const threadId = this.chatThreadService.state.currentThreadId;
+
+			// Adicionar a mensagem do usuário e aguardar a resposta
+			await this.chatThreadService.addUserMessageAndStreamResponse({
+				userMessage: task.prompt,
+				threadId
+			});
+
+			// Marcar a tarefa como concluída
+			this._executionStatus.executedTasks.push(task.id);
+			this._onTaskCompleted.fire(task.id);
+
+			// Agendar a próxima tarefa
+			setTimeout(() => {
+				this.executeNextTask();
+			}, 1000); // Pequeno intervalo entre tarefas
+
+		} catch (error) {
+			console.error(`Erro ao executar tarefa ${task.id}:`, error);
+			this._executionStatus.failedTasks.push(task.id);
+
+			// Continuar com a próxima tarefa mesmo se houver falha
+			setTimeout(() => {
+				this.executeNextTask();
+			}, 1000);
+		}
 	}
 
 	private findNextExecutableTask(): string | null {
